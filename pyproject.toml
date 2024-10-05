@@ -231,6 +231,7 @@ try: import pylint_venv
 except ImportError: pass
 else: pylint_venv.inithook(force_venv_activation=True, quiet=True)
 """
+jobs = 0
 load-plugins = [
     "pylint_per_file_ignores",
 ]
