@@ -278,12 +278,13 @@ disable = [
     "missing-function-docstring",
     "empty-docstring",
 ]
-per-file-ignores = [
-    "test_*:unused-variable",
+# bug with TOML lists: https://github.com/christopherpickering/pylint-per-file-ignores/issues/160
+per-file-ignores = """
+    test_*:unused-variable,
+"""
     # Don't work (astroid-error)
     # "*_test:unused-variable",
     # "*_test_*:unused-variable",
-]
 
 [tool.pylint.reports]
 output-format = "colorized"
