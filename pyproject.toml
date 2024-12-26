@@ -292,14 +292,15 @@ score = false
 
 
 [tool.flake8]
-exclude = [".venv/"]
+exclude = ["*.venv*/"]
 ignore = [
+    # incompatible with each other:
     # closing bracket is missing indentation
     "E133",
     # line break before binary operator
     "W503",
 
-    # duplicates with ruff
+    # duplicates with ruff:
     "B007",
     "E203",
     "E266",
@@ -314,10 +315,12 @@ ignore = [
     # "E303",
     # "E123",
 ]
-max-line-length = 90
 per-file-ignores = [
-    # in tests: Local variable name is assigned to but never used
+    # in tests:
+    # local variable name is assigned to but never used
     "test_*:F841",
     "*_test:F841",
     "*_test_*:F841",
 ]
+max-line-length = 90
+inline-quotes = "double"
