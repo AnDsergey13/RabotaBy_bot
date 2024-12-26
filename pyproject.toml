@@ -251,23 +251,27 @@ enable = [
 ]
 disable = [
     # https://pylint.pycqa.org/en/latest/faq.html#which-messages-should-i-disable-to-avoid-duplicates-if-i-use-other-popular-linters
-    # duplicates with flake8:pycodestyle
+
+    # duplicates with flake8:pycodestyle:
     # "bad-indentation", is not covered by ruff
     "bare-except",
     "line-too-long",
     "missing-final-newline",
     "multiple-statements",
     "singleton-comparison",
+    "trailing-newlines",
     "trailing-whitespace",
-    "unnecessary-semicolon",
     # unnecessary-negation is not covered by flake8
     "unnecessary-negation",
+    "unnecessary-semicolon",
     "wrong-import-position",
-    # duplicates with flake8:pyflakes
+
+    # duplicates with flake8:pyflakes:
     "undefined-variable",
     "unused-import",
     "unused-variable",
-    # docstrings, duplicates with ruff:D
+
+    # docstrings, duplicates with ruff:D:
     "missing-module-docstring",
     "missing-class-docstring",
     "missing-function-docstring",
