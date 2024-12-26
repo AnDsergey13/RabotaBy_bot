@@ -25,132 +25,174 @@ select = [
     "ALL"
 ]
 ignore = [
-    # Incompatible rules
+    # incompatible with each other:
+
     # "D203", https://docs.astral.sh/ruff/rules/one-blank-line-before-class/
     # "D211", https://docs.astral.sh/ruff/rules/blank-line-before-class/
     "D203",
     # "D212", https://docs.astral.sh/ruff/rules/multi-line-summary-first-line/
     # "D213", https://docs.astral.sh/ruff/rules/multi-line-summary-second-line/
     "D213",
-    # with ruff format
+
+
+    # incompatible with ruff format:
+
+    # missing-trailing-comma
     # "COM812",
+    # single-line-implicit-string-concatenation
     # "ISC001",
 
-    # Don't check at all
-    # copyrights; preview
+
+    # don't check at all:
+
+    # missing-copyright-notice; preview
     "CPY001",
     # annotations
     "ANN",
+    # docstring-missing-returns; preview
+    "DOC201",
+
+
+    # don't check in this project:
+
     # print use
     "T201",
-
-    # Indentation contains tabs
+    # tab-indentation
     "W191",
-
+    # ambiguous-unicode-character-string
     "RUF001",
+    # ambiguous-unicode-character-docstring
     "RUF002",
+    # ambiguous-unicode-character-comment
     "RUF003",
 
-    # Fix later
 
-    # Figure out what to do
+    # fix later:
 
-    # # Line too long [54]
+
+
+    # figure out what to do:
+
+    # # line-too-long [53]
     # "E501",
-    # # Found commented-out code [42]
-    # "ERA001",
-    # # Single quotes found but double quotes preferred [26]
-    # "Q000",
-    # # Whitespace before ':' [19]
-    # "E203",
-    # # First line should end with a period [18]
-    # "D400",
-    # # First line should end with a period, question mark, or exclamation point [18]
-    # "D415",
-    # # Missing docstring in public function [17]
+    # # undocumented-public-function [40]
     # "D103",
-    # # Docstring is over-indented [12]
+    # # commented-out-code [29]
+    # "ERA001",
+    # # ends-in-period [22]
+    # "D400",
+    # # ends-in-punctuation [22]
+    # "D415",
+    # # whitespace-before-punctuation [19]
+    # "E203",
+    # # over-indentation [12]
     # "D208",
-    # # Possible SQL injection vector through string-based query construction [10]
+    # # bad-quotes-inline-string [11]
+    # "Q000",
+    # # hardcoded-sql-expression [10]
     # "S608",
-    # # Blank line contains whitespace [8]
-    # "W293",
-    # # Missing docstring in public method [8]
-    # "D102",
-    # # Docstring is empty [7]
-    # "D419",
-    # # Trailing comma missing [6]
+    # # missing-trailing-comma [9]
     # "COM812",
-    # # Import block is un-sorted or un-formatted [4]
+    # # undocumented-public-method [9]
+    # "D102",
+    # # blank-line-with-whitespace [8]
+    # "W293",
+    # # unnecessary-assign [6]
+    # "RET504",
+    # # multiple-leading-hashes-for-block-comment [6]
+    # "E266",
+    # # empty-docstring [5]
+    # "D419",
+    # # trailing-whitespace [4]
+    # "W291",
+    # # undocumented-public-init [4]
+    # "D107",
+    # # line-contains-todo [3]
+    # "FIX002",
+    # # missing-todo-author [3]
+    # "TD002",
+    # # missing-todo-link [3]
+    # "TD003",
+    # # missing-todo-colon [3]
+    # "TD004",
+    # # unsorted-imports [3]
     # "I001",
+    # # undocumented-public-module [3]
+    # "D100",
+    # # indent-with-spaces [3]
+    # "D206",
+    # # surrounding-whitespace [3]
+    # "D210",
+    # # boolean-default-value-positional-argument [2]
+    # "FBT002",
+    # # superfluous-else-return [2]
+    # "RET505",
+    # # if-expr-with-true-false [2]
+    # "SIM210",
+    # # unexpected-indentation-comment [2]
+    # "E116",
+    # # blank-lines-top-level [2]
+    # "E302",
+    # # missing-newline-at-end-of-file [2]
+    # "W292",
+    # # unused-import [2]
+    # "F401",
+    # # global-statement [2]
+    # "PLW0603",
+    # # mutable-class-default [2]
+    # "RUF012",
+    # # try-consider-else [2]
+    # "TRY300",
+    # # blind-except [1]
+    # "BLE001",
+    # # unnecessary-generator-list [1]
+    # "C400",
+    # # unnecessary-list-call [1]
+    # "C411",
+    # # call-datetime-now-without-tzinfo [1]
+    # "DTZ005",
+    # # call-datetime-strptime-without-zone [1]
+    # "DTZ007",
+    # # implicit-return [1]
+    # "RET503",
+    # # missing-todo-description [1]
+    # "TD005",
+    # # invalid-function-name [1]
+    # "N802",
+    # # mixed-spaces-and-tabs [1]
+    # "E101",
+    # # module-import-not-at-top-of-file [1]
+    # "E402",
+    # # undocumented-public-class [1]
+    # "D101",
+    # # no-blank-line-after-function [1]
+    # "D202",
+    # # blank-line-after-summary [1]
+    # "D205",
+    # # too-many-locals [1]
+    # "PLR0914",
+    # # unnecessary-class-parentheses [1]
+    # "UP039",
+    # # asyncio-dangling-task [1]
+    # "RUF006",
+    # # unused-async [1]
+    # "RUF029",
+
+
+    # stale:
+
     # # Invalid module name [4]
     # "N999",
-    # # Too many leading `#` before block comment [4]
-    # "E266",
-    # # Trailing whitespace [4]
-    # "W291",
-    # # Missing docstring in public module [4]
-    # "D100",
-    # # Missing docstring in `__init__` [4]
-    # "D107",
-    # # Line contains TODO, consider resolving the issue [3]
-    # "FIX002",
-    # # Missing author in TODO; try: `# TODO(<author_name>): ...` or `# TODO @<author_name>: ...` [3]
-    # "TD002",
-    # # Missing issue link on the line following this TODO [3]
-    # "TD003",
-    # # Missing colon in TODO [3]
-    # "TD004",
-    # # Docstring should be indented with spaces, not tabs [3]
-    # "D206",
-    # # No whitespaces allowed surrounding docstring text [3]
-    # "D210",
-    # # Boolean default positional argument in function definition [2]
-    # "FBT002",
-    # # Mutable class attributes should be annotated with `typing.ClassVar` [2]
-    # "RUF012",
     # # Probable use of requests call without timeout [1]
     # "S113",
-    # # Do not catch blind exception: `Exception` [1]
-    # "BLE001",
     # # Loop control variable `it` not used within loop body [1]
     # "B007",
-    # # Unnecessary generator (rewrite as a `list` comprehension) [1]
-    # "C400",
-    # # Unnecessary `list` call (remove the outer call to `list()`) [1]
-    # "C411",
-    # # The use of `datetime.datetime.now()` without `tz` argument is not allowed [1]
-    # "DTZ005",
-    # # Missing explicit `return` at the end of function able to return non-`None` value [1]
-    # "RET503",
-    # # Unnecessary assignment to `query` before `return` statement [1]
-    # "RET504",
-    # # Unnecessary `else` after `return` statement [1]
-    # "RET505",
-    # # Missing issue description after `TODO` [1]
-    # "TD005",
-    # # Function name `is_user_ID` should be lowercase [1]
-    # "N802",
-    # # No newline at end of file [1]
-    # "W292",
-    # # Missing docstring in public class [1]
-    # "D101",
     # # Missing docstring in public package [1]
     # "D104",
-    # # No blank lines allowed after function docstring (found 1) [1]
-    # "D202",
-    # # 1 blank line required between summary line and description [1]
-    # "D205",
-    # # `Data.Base` imported but unused [1]
-    # "F401",
     # # Method `get_current_datetime` could be a function, class method, or static method [1]
     # "PLR6301",
-    # # Unnecessary parentheses after class definition [1]
-    # "UP039",
     # # Use explicit conversion flag [1]
     # "RUF010",
-    # # Consider moving this statement to an `else` block [1]
-    # "TRY300",
 ]
 line-length = 90
 
