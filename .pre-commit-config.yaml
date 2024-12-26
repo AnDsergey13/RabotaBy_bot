@@ -1,0 +1,73 @@
+# https://pre-commit.com/#2-add-a-pre-commit-configuration
+repos:
+
+# https://docs.astral.sh/ruff/integrations/#pre-commit
+#- repo: https://github.com/astral-sh/ruff-pre-commit
+#  # Ruff version.
+#  rev: v0.8.4
+#  hooks:
+#    # Run the linter.
+#    - id: ruff
+#      args: [ --fix ]
+#    # Run the formatter.
+#    - id: ruff-format
+
+# https://pylint.pycqa.org/en/stable/user_guide/installation/pre-commit-integration.html
+#- repo: local
+#  hooks:
+#    - id: pylint
+#      name: pylint
+#      entry: pylint
+#      language: system
+#      types: [python]
+#      require_serial: true
+
+# https://flake8.pycqa.org/en/latest/user/using-hooks.html
+#- repo: https://github.com/pycqa/flake8
+#  rev: 7.1.1
+#  hooks:
+#    - id: flake8
+#      additional_dependencies: [Flake8-pyproject]
+
+# Second, for wemake-python-styleguide
+# https://flake8.pycqa.org/en/latest/user/using-hooks.html
+#- repo: https://github.com/pycqa/flake8
+#  rev: 7.1.1
+#  hooks:
+#    - id: flake8
+#      alias: wemake-python-styleguide
+#      name: wemake-python-styleguide
+#      additional_dependencies: [Flake8-pyproject, wemake-python-styleguide]
+# It produces unnecessary output "Unable to find qualified name for module"
+# https://stackoverflow.com/questions/77310211/unable-to-find-qualified-name-for-module-main-py-what-does-in-mean
+# https://github.com/tylerwince/flake8-bandit/issues/29
+
+# https://stackoverflow.com/questions/64011304/running-pytest-as-a-pre-commit-hook-no-such-file-or-directory-issue
+# https://github.com/pre-commit/pre-commit/issues/761#issuecomment-394167542
+# - repo: local
+#   hooks:
+#     - id: pytest
+#       name: pytest
+#       entry: .venv/Scripts/pytest.exe
+#       language: system
+#       pass_filenames: false
+#       always_run: true
+
+# https://jorisroovers.com/gitlint/latest/commit_hooks/#pre-commit
+# https://github.com/jorisroovers/gitlint/issues/255
+- repo: https://github.com/jorisroovers/gitlint
+  rev: v0.19.1
+  hooks:
+    - id: gitlint
+      args:
+        - --ignore
+        - body-is-missing
+        - -c
+        - ignore-body-lines.regex=https?://\S+
+        - -c
+        - general.regex-style-search=True
+        - --contrib
+        - CT1,CC2
+#        - -c
+#        - contrib-title-conventional-commits.types=fix,feat,chore,docs,style,refactor,perf,test,revert,ci,build,config
+        - --msg-filename

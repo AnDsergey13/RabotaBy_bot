@@ -9,7 +9,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import Message
 
-from Data import SearchTemplates, BlackList, VisitsList
+from data import SearchTemplates, BlackList, VisitsList
 import parsing
 
 # Извлекаем из виртуальной среды переменные окружения. API токен и id пользователя
