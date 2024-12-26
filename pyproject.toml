@@ -225,7 +225,7 @@ indent-style = "tab"
 ignore-patterns = [
     "pyproject.toml",
 ]
-# Virtual environment
+# use virtual environment
 init-hook = """
 try: import pylint_venv
 except ImportError: pass
@@ -235,9 +235,6 @@ jobs = 0
 load-plugins = [
     "pylint_per_file_ignores",
 ]
-# extension-pkg-allow-list = [
-#     "pygame",
-# ]
 
 [tool.pylint.format]
 max-line-length = 90
