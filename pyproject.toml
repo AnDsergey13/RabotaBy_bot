@@ -122,7 +122,7 @@ ignore = [
     # # undocumented-public-module [3]
     # "D100",
     # # indent-with-spaces [3]
-    # "D206",
+    "D206",
     # # surrounding-whitespace [3]
     # "D210",
     # # boolean-default-value-positional-argument [2]
