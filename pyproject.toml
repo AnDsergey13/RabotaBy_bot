@@ -11,11 +11,6 @@ dependencies = [
     "psycopg2",
 ]
 
-# [project.optional-dependencies]
-# test = [
-#     "pytest",
-# ]
-
 [tool.ruff]
 # https://docs.astral.sh/ruff/configuration/
 # https://docs.astral.sh/ruff/rules/
@@ -196,10 +191,6 @@ ignore = [
 ]
 line-length = 90
 
-#[tool.ruff.lint]
-#unfixable = [
-#    "COM812",
-#]
 
 [tool.ruff.lint.isort]
 split-on-trailing-comma = false
