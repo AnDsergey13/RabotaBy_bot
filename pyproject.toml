@@ -243,6 +243,12 @@ max-line-length = 90
 indent-string = "\t"
 
 [tool.pylint."messages control"]
+enable = [
+    "bad-inline-option",
+    "useless-suppression",
+    "deprecated-pragma",
+    "use-symbolic-message-instead",
+]
 disable = [
     # https://pylint.pycqa.org/en/latest/faq.html#which-messages-should-i-disable-to-avoid-duplicates-if-i-use-other-popular-linters
     # duplicates with flake8:pycodestyle
