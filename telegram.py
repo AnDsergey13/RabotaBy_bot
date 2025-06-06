@@ -233,14 +233,28 @@ async def state_t_state(message: Message, state: FSMContext):
 
 @dp.message(Command("print_t"), CS.AVAILABLE)
 async def print_t(message: Message):
-	final_msg = "Список шаблонов\n🟢 - шаблон включен\n🔴 - шаблон выключен\n\n"
+	header = "Список шаблонов\n🟢 - шаблон включен\n🔴 - шаблон выключен\n\n"
+	final_msg_part = header
+
 	for line in st.get_all_from_table():
-		# Если шаблон включен(True), то выводим зелёный кружок. А если отключен(False) то выводим красный кружок
 		included = str(line[3])
 		circle = "🟢" if included == "True" else "🔴"
-		final_msg += f"{line[0]}. {circle} {line[1]} - {line[2]}\n"
+		line_to_add = f"{line[0]}. {circle} {line[1]} - {line[2]}\n"
 
-	await message.answer(final_msg)
+		# Если добавление новой строки превысит лимит в 4096, отправляем текущую часть и начинаем новую.
+		if len(final_msg_part) + len(line_to_add) > 4096:
+			await message.answer(final_msg_part)
+			final_msg_part = ""  # Сбрасываем для следующего сообщения
+
+		final_msg_part += line_to_add
+		
+	# Отправляем оставшуюся часть сообщения, если она есть
+	# (и если она не состоит только из заголовка в случае пустого списка)
+	if final_msg_part and final_msg_part != header:
+		await message.answer(final_msg_part)
+	# Если список был пуст, отправляем только заголовок
+	elif not st.get_all_from_table():
+		await message.answer(header)
 
 
 @dp.message(Command("add_b"), CS.AVAILABLE)
