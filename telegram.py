@@ -235,26 +235,27 @@ async def state_t_state(message: Message, state: FSMContext):
 async def print_t(message: Message):
 	header = "Список шаблонов\n🟢 - шаблон включен\n🔴 - шаблон выключен\n\n"
 	final_msg_part = header
+	
+	all_lines = st.get_all_from_table()
 
-	for line in st.get_all_from_table():
+	for line in all_lines:
 		included = str(line[3])
 		circle = "🟢" if included == "True" else "🔴"
-		line_to_add = f"{line[0]}. {circle} {line[1]} - {line[2]}\n"
+		line_to_add = f'{line[0]}. {circle} <a href="{line[2]}">{line[1]}</a>\n'
 
-		# Если добавление новой строки превысит лимит в 4096, отправляем текущую часть и начинаем новую.
 		if len(final_msg_part) + len(line_to_add) > 4096:
-			await message.answer(final_msg_part)
-			final_msg_part = ""  # Сбрасываем для следующего сообщения
+			# Отправляем сообщение, указывая parse_mode
+			await message.answer(final_msg_part, parse_mode="HTML", disable_web_page_preview=True)
+			final_msg_part = ""
 
 		final_msg_part += line_to_add
 		
-	# Отправляем оставшуюся часть сообщения, если она есть
-	# (и если она не состоит только из заголовка в случае пустого списка)
+	# Отправляем последнюю часть сообщения
 	if final_msg_part and final_msg_part != header:
-		await message.answer(final_msg_part)
-	# Если список был пуст, отправляем только заголовок
-	elif not st.get_all_from_table():
-		await message.answer(header)
+		await message.answer(final_msg_part, parse_mode="HTML", disable_web_page_preview=True)
+	# Или только заголовок, если список был пуст
+	elif not all_lines:
+		await message.answer(header, parse_mode="HTML", disable_web_page_preview=True)
 
 
 @dp.message(Command("add_b"), CS.AVAILABLE)
