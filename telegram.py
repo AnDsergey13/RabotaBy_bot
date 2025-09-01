@@ -55,7 +55,7 @@ class CS(StatesGroup):
 
 min_delay = 0
 max_delay = 180
-current_delay = 10
+current_delay = 2
 
 start = False
 
