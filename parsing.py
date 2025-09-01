@@ -47,24 +47,20 @@ def get_visit_list():
 
 
 def get_number_vacancies(soup):
+	""" [<h1 class="magritte-text___gMq2l_7-0-3 magritte-text-overflow___UBrTV_7-0-3 magritte-text-typography-small___QbQNX_7-0-3 magritte-text-style-primary___8SAJp_7-0-3" data-qa="title"><span>Найдено 34 вакансии</span> «ИИ»</h1>] """
 	containers = soup.findAll("h1", {"data-qa": "title"})
-	try:
-		# Извлекаем текст с числом из контейнера
-		text_string = containers[0].get_text(strip=True)
-	except IndexError:
-		# Если вакансий нет, то возвращаем 0
+	if not containers:
 		return 0
-
-	# Отрезаем концовку текста, на случай, если в самом запросе были числа
-	# 9 символов = 999999999 вакансиям. Это количество должно быть достаточно для проверки
-	text_string = text_string[:9]
-	try:
-		# Извлекаем число из полученной строки
-		# noinspection PyTypeChecker
-		number = int("".join(filter(str.isdigit, text_string)))
-		return number
-	except ValueError:
-		# Если числа нет, то возвращаем 0
+	
+	text_string = containers[0].get_text(strip=True)
+	# print(f"Текст для анализа: {text_string}")
+	
+	# Убираем ограничение в 9 символов и просто извлекаем все цифры
+	number_str = ''.join(filter(str.isdigit, text_string))
+	
+	if number_str:
+		return int(number_str)
+	else:
 		return 0
 
 
