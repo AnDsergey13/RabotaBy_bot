@@ -1,4 +1,5 @@
 import asyncio
+import html
 import logging
 import sys
 from os import environ
@@ -467,13 +468,25 @@ async def send_to_user(param):
 	metro_emoji = "Ⓜ️"
 	address_emoji = "🌍"
 
-	# Формируем сообщение
-	text_message = f"""#{param["key"]}
-{vacancy_name_emoji} <a href="{param["url"]}">{param["vacancy_name"]}</a>
-{wage_emoji} {param["wage"]}
-{name_company_emoji} {param["name_company"]}
-{metro_emoji} {param["metro"]}
-{address_emoji} {param["city"]}, {param["street"]} (<a href="{param["yandex_url"]}">YandexMap</a>, <a href="{param["google_url"]}">GoogleMap</a>)"""
+	# Escape all parameters to prevent HTML injection
+	key = html.escape(param["key"])
+	url = html.escape(param["url"])
+	vacancy_name = html.escape(param["vacancy_name"])
+	wage = html.escape(param["wage"])
+	name_company = html.escape(param["name_company"])
+	metro = html.escape(param["metro"])
+	city = html.escape(param["city"])
+	street = html.escape(param["street"])
+	yandex_url = html.escape(param["yandex_url"])
+	google_url = html.escape(param["google_url"])
+
+	# Формируем сообщение с экранированными параметрами
+	text_message = f"""#{key}
+{vacancy_name_emoji} <a href="{url}">{vacancy_name}</a>
+{wage_emoji} {wage}
+{name_company_emoji} {name_company}
+{metro_emoji} {metro}
+{address_emoji} {city}, {street} (<a href="{yandex_url}">YandexMap</a>, <a href="{google_url}">GoogleMap</a>)"""
 
 	# Удаляем табы из сообщения, так как мешают
 	text_message = text_message.replace("\t", "")
