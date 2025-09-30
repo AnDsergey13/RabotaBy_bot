@@ -96,10 +96,17 @@ async def get_all_vacancies_on_all_pages(session, url, max_number_pages):
 	all_vacancies = []
 	for num_page in range(max_number_pages):
 		url_full = url + items_on_page + pages + str(num_page)
-		async with session.get(url_full, headers=headers) as response:
-			page_text = await response.text()
-		soup = BeautifulSoup(page_text, "html.parser")
-		all_vacancies += get_all_vacancies_on_page(soup)
+		try:
+			async with session.get(url_full, headers=headers) as response:
+				if response.status != 200:
+					print(f"Ошибка при получении {url_full}: Статус {response.status}")
+					continue
+				page_text = await response.text()
+			soup = BeautifulSoup(page_text, "html.parser")
+			all_vacancies += get_all_vacancies_on_page(soup)
+		except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+			print(f"Сетевая ошибка при получении страницы {num_page} для {url}: {e}")
+			continue
 	return all_vacancies
 
 
@@ -178,15 +185,28 @@ def get_the_rest(soup, name_company):
 # Работа со страницами вакансий
 async def get_param_for_msg():
 	keys_and_urls = get_list_keys_and_templates()
-
-	async with aiohttp.ClientSession() as session:
+	
+	timeout = aiohttp.ClientTimeout(total=30)
+	async with aiohttp.ClientSession(timeout=timeout) as session:
 		for key, url in keys_and_urls:
 			# Перед всеми проверками и запросами очищаем список посещений, если есть старые вакансии
 			# Например: Если дата посещённой ссылки больше заданного времени, то она оттуда удаляется
 			vl.delete_rows_after_time(key)
+			
+			page_text = None
+			try:
+				async with session.get(url, headers=headers) as response:
+					if response.status != 200:
+						print(f"Ошибка при получении {url}: Статус {response.status}")
+						continue
+					page_text = await response.text()
+			except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+				print(f"Сетевая ошибка при получении {url}: {e}")
+				continue
 
-			async with session.get(url, headers=headers) as response:
-				page_text = await response.text()
+			if not page_text:
+				continue
+
 			soup = BeautifulSoup(page_text, "html.parser")
 
 			# Получаем количество найденных вакансий
@@ -217,40 +237,47 @@ async def get_param_for_msg():
 				# Заходим на каждый URL и достаём оттуда информацию о вакансии
 				# Название вакансии, ЗП, название фирмы, адрес и прочее
 				for url_vacancy in all_urls:
-					async with session.get(url_vacancy, headers=headers) as response:
-						page_text2 = await response.text()
-					soup2 = BeautifulSoup(page_text2, "html.parser")
+					try:
+						async with session.get(url_vacancy, headers=headers) as response:
+							if response.status != 200:
+								print(f"Ошибка при получении вакансии {url_vacancy}: Статус {response.status}")
+								continue
+							page_text2 = await response.text()
+						soup2 = BeautifulSoup(page_text2, "html.parser")
 
-					await asyncio.sleep(2.5)  # Возможно, стоит заменить на асинхронный запрос
+						await asyncio.sleep(2.5)  # Возможно, стоит заменить на асинхронный запрос
 
-					vacancy_name = get_vacancy_name(soup2)
-					wage = get_wage(soup2)
-					name_company = get_name_company(soup2)
+						vacancy_name = get_vacancy_name(soup2)
+						wage = get_wage(soup2)
+						name_company = get_name_company(soup2)
 
-					city, street, metro_stations, yandex_url, google_url = get_the_rest(
-						soup2, name_company
-					)
+						city, street, metro_stations, yandex_url, google_url = get_the_rest(
+							soup2, name_company
+						)
 
-					# Так как в названии ключа могут быть пробелы, которые обрезают работу тега в сообщении,
-					# заменяем все пробелы на нижние подчёркивания
-					key_formatted = key.replace(" ", "_")
+						# Так как в названии ключа могут быть пробелы, которые обрезают работу тега в сообщении,
+						# заменяем все пробелы на нижние подчёркивания
+						key_formatted = key.replace(" ", "_")
 
-					if isinstance(metro_stations, list):
-						metro = ", ".join(metro_stations)
-					else:
-						metro = metro_stations
+						if isinstance(metro_stations, list):
+							metro = ", ".join(metro_stations)
+						else:
+							metro = metro_stations
 
-					param = {
-						"key": key_formatted,
-						"url": url_vacancy,
-						"vacancy_name": vacancy_name,
-						"wage": wage,
-						"name_company": name_company,
-						"city": city,
-						"street": street,
-						"metro": metro,
-						"yandex_url": yandex_url,
-						"google_url": google_url,
-					}
+						param = {
+							"key": key_formatted,
+							"url": url_vacancy,
+							"vacancy_name": vacancy_name,
+							"wage": wage,
+							"name_company": name_company,
+							"city": city,
+							"street": street,
+							"metro": metro,
+							"yandex_url": yandex_url,
+							"google_url": google_url,
+						}
 
-					yield param
+						yield param
+					except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+						print(f"Сетевая ошибка при получении вакансии {url_vacancy}: {e}")
+						continue
