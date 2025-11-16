@@ -9,6 +9,7 @@ dependencies = [
     "aiogram",
     "aiohttp",
     "beautifulsoup4",
+    "dotenv>=0.9.9",
     "psycopg2",
 ]
 

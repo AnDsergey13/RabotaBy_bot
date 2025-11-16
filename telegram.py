@@ -3,6 +3,7 @@ import html
 import logging
 import sys
 from os import environ
+from dotenv import load_dotenv
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.bot import DefaultBotProperties
@@ -19,6 +20,7 @@ from data import BlackList, SearchTemplates, VisitsList
 from parsing import get_param_for_msg
 
 # Извлекаем из виртуальной среды переменные окружения. API токен и id пользователя
+load_dotenv()
 telegram_key = environ.get("API_TELEGRAM_KEY")
 user_id = int(environ.get("USER_ID"))
 
