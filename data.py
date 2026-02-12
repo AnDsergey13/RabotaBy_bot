@@ -133,20 +133,23 @@ class Settings:
 			Извлекаем из текущего класса, все переменные (пары ключ-значения).
 			И оставляем только кортежи
 		"""
+		# Фильтруем только кортежи с РОВНО 2 элементами (наши определения колонок)
 		tuple_used_names = tuple(
-			value for key, value in vars(cls).items() if isinstance(value, tuple)
+			value for key, value in vars(cls).items()
+			if isinstance(value, tuple) and len(value) == 2
 		)
-		# Извлекаем из кортежей имена таблиц, и записываем в список
-		list_all_names_columns = list([name for name, _ in tuple_used_names])
+		
+		# Извлекаем имена колонок (первый элемент каждого кортежа)
+		list_all_names_columns = [name for name, _ in tuple_used_names]
 
-		# TODO исправить этот костыль
 		if name_column in list_all_names_columns:
-			# передаём дальше значение, если всё хорошо
 			return name_column
 		else:
 			print(
-				f"Некорректное имя столбца => {name_column}. Введите один из доступных => {list_all_names_columns}"
+				f"Некорректное имя столбца => {name_column}. "
+				f"Введите один из доступных => {list_all_names_columns}"
 			)
+			return None  # Явный return вместо implicit None
 
 	@classmethod
 	def __check_table_code(cls, table_code):
