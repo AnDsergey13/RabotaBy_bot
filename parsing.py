@@ -122,14 +122,35 @@ def get_map_url(name_map: str, string_search):
 
 
 def get_vacancy_name(soup):
-	# Перебираем несколько возможных атрибутов для имени вакансии
-	selectors = [{"data-qa": "vacancy-title"}, {"data-qa": "title"}]
+    """
+    Извлекает название вакансии со страницы rabota.by.
+    Адаптировано под обновлённую структуру сайта (2025+).
+    """
+    # Приоритет 1: Ищем по data-qa="vacancy-title" (любой тег)
+    vacancy_name = soup.find(attrs={"data-qa": "vacancy-title"})
+    if vacancy_name is not None:
+        text = vacancy_name.get_text(strip=True)
+        if text:
+            return text
 
-	for selector in selectors:
-		vacancy_name = soup.find("h1", selector)
-		if vacancy_name is not None:
-			return vacancy_name.get_text(strip=True)
-	return "?"
+    # Приоритет 2: Альтернативный атрибут data-qa="title"
+    vacancy_name = soup.find(attrs={"data-qa": "title"})
+    if vacancy_name is not None:
+        text = vacancy_name.get_text(strip=True)
+        if text:
+            return text
+
+    # Приоритет 3: Поиск h1 с классами Magritte (новый дизайн hh/rabota)
+    vacancy_name = soup.find("h1", class_=lambda x: x and "magritte" in x)
+    if vacancy_name is not None:
+        return vacancy_name.get_text(strip=True)
+
+    # Fallback: первый h1 на странице
+    h1 = soup.find("h1")
+    if h1 is not None:
+        return h1.get_text(strip=True)
+
+    return "?"
 
 
 def get_wage(soup):
