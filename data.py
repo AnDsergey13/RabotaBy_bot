@@ -8,7 +8,6 @@ load_dotenv()
 
 import psycopg2
 
-logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
 logger = logging.getLogger(__name__)
 
 
