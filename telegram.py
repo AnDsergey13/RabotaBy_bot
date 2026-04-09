@@ -2,6 +2,7 @@ import asyncio
 import html
 import logging
 import sys
+from logging.handlers import RotatingFileHandler
 from os import environ
 from dotenv import load_dotenv
 
@@ -18,6 +19,8 @@ from aiogram.types import Message
 
 from data import BlackList, SearchTemplates, VisitsList
 from parsing import get_param_for_msg
+
+logger = logging.getLogger(__name__)
 
 # Извлекаем из виртуальной среды переменные окружения. API токен и id пользователя
 load_dotenv()
@@ -57,7 +60,7 @@ class CS(StatesGroup):
 
 min_delay = 0
 max_delay = 180
-current_delay = 2
+current_delay = 5
 
 start = False
 
@@ -77,9 +80,11 @@ async def cmd_start(message: Message, state: FSMContext):
 		global start
 		start = True
 
+		logger.info("Бот активирован пользователем %d", message.from_user.id)
 		await message.answer("🖐 Hola! \nВведите /help для доступа к командам")
 		await state.set_state(CS.AVAILABLE)
 	else:
+		logger.warning("Попытка доступа от неизвестного пользователя: %d", message.from_user.id)
 		await message.answer(
 			"❌  Please leave this chat. You're an unregistered user\nПрошу покинуть этот чат. Вы незарегистрированный пользователь"
 		)
@@ -238,7 +243,7 @@ async def state_t_state(message: Message, state: FSMContext):
 async def print_t(message: Message):
 	header = "Список шаблонов\n🟢 - шаблон включен\n🔴 - шаблон выключен\n\n"
 	final_msg_part = header
-	
+
 	all_lines = st.get_all_from_table()
 
 	for line in all_lines:
@@ -252,7 +257,7 @@ async def print_t(message: Message):
 			final_msg_part = ""
 
 		final_msg_part += line_to_add
-		
+
 	# Отправляем последнюю часть сообщения
 	if final_msg_part and final_msg_part != header:
 		await message.answer(final_msg_part, parse_mode="HTML", disable_web_page_preview=True)
@@ -497,21 +502,39 @@ async def send_to_user(param):
 
 	# Используем parse_mode='HTML', так как при Markdown нужно маскировать '(' на '\\('
 	# Это приводит к нарушению работы ссылок в сообщении
-	await bot.send_message(user_id, text_message, parse_mode="HTML")
+	try:
+		await bot.send_message(user_id, text_message, parse_mode="HTML")
+		logger.info("Сообщение отправлено: '%s'", param.get("vacancy_name", "?")[:50])
+	except Exception as e:
+		logger.error("Ошибка отправки сообщения в Telegram: %s", e)
 
 
 async def background_task():
+	logger.info("Фоновая задача запущена, ожидание /start...")
 	while True:
-		if start:
-			async for all_param in get_param_for_msg():
-				await send_to_user(all_param)
+		try:
+			if start:
+				logger.info("Запуск цикла парсинга (delay=%d мин)...", current_delay)
+				count = 0
+				async for all_param in get_param_for_msg():
+					await send_to_user(all_param)
+					count += 1
 
-			await asyncio.sleep(current_delay * 60)
-		else:
-			await asyncio.sleep(1)
+				logger.info(
+					"Цикл парсинга завершён. Отправлено вакансий: %d. Следующий через %d мин.",
+					count, current_delay,
+				)
+				await asyncio.sleep(current_delay * 60)
+			else:
+				await asyncio.sleep(1)
+		except Exception as e:
+			logger.exception("❌ Критическая ошибка в background_task!")
+			logger.info("Перезапуск фоновой задачи через 60 секунд...")
+			await asyncio.sleep(60)
 
 
 async def main():
+	logger.info("Запуск main(), создание фоновой задачи...")
 	# Запускаем фоновую задачу
 	asyncio.create_task(background_task())
 
@@ -519,5 +542,33 @@ async def main():
 
 
 if __name__ == "__main__":
-	logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
+	# === НАСТРОЙКА ЛОГИРОВАНИЯ ===
+	log_format = "%(asctime)s | %(name)s | %(levelname)s | %(funcName)s:%(lineno)d | %(message)s"
+
+	# File handler с ротацией (5 МБ на файл, 3 бэкапа = макс ~20 МБ на диске)
+	file_handler = RotatingFileHandler(
+		"bot.log", maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
+	)
+	file_handler.setLevel(logging.DEBUG)
+	file_handler.setFormatter(logging.Formatter(log_format))
+
+	# Console handler (только INFO и выше, чтобы не засорять терминал)
+	console_handler = logging.StreamHandler(sys.stdout)
+	console_handler.setLevel(logging.INFO)
+	console_handler.setFormatter(logging.Formatter("%(asctime)s | %(levelname)s | %(message)s"))
+
+	# Root logger — очищаем старые хэндлеры (data.py мог добавить через basicConfig)
+	root_logger = logging.getLogger()
+	root_logger.handlers.clear()
+	root_logger.setLevel(logging.DEBUG)
+	root_logger.addHandler(file_handler)
+	root_logger.addHandler(console_handler)
+
+	# Подавляем слишком шумные логгеры (aiogram на DEBUG выдаёт ОЧЕНЬ много)
+	logging.getLogger("aiogram").setLevel(logging.WARNING)
+	logging.getLogger("aiohttp").setLevel(logging.WARNING)
+
+	logger.info("=" * 50)
+	logger.info("БОТ ЗАПУСКАЕТСЯ")
+	logger.info("=" * 50)
 	asyncio.run(main())

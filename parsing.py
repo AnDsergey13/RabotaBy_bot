@@ -1,9 +1,14 @@
 import asyncio
+import logging
+import os
+import time
 
 import aiohttp
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Comment
 
 from data import BlackList, SearchTemplates, VisitsList
+
+logger = logging.getLogger(__name__)
 
 st = SearchTemplates()
 bl = BlackList()
@@ -21,13 +26,47 @@ headers = {
 	"user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
 }
 
+DEBUG_HTML_DIR = "debug_html"
+
+
+def _save_debug_html(html_content, label):
+	"""Сохраняет облегчённый HTML для отладки.
+
+	Фиксированное имя файла на каждый label → перезаписывается, не копится.
+	Убираем script/style/svg/noscript/комментарии (экономия ~80-85% размера).
+	"""
+	os.makedirs(DEBUG_HTML_DIR, exist_ok=True)
+	# Фиксированное имя → макс. 1 файл на label
+	filename = os.path.join(DEBUG_HTML_DIR, f"debug_{label}.html")
+
+	try:
+		soup = BeautifulSoup(html_content, "html.parser")
+		for tag in soup.find_all(["script", "style", "svg", "noscript", "link"]):
+			tag.decompose()
+		for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):
+			comment.extract()
+		stripped = str(soup)
+
+		with open(filename, "w", encoding="utf-8") as f:
+			f.write(stripped)
+		logger.info(
+			"Debug HTML сохранён: %s (%d КБ, было %d КБ)",
+			filename, len(stripped) // 1024, len(html_content) // 1024,
+		)
+	except Exception as e:
+		logger.error("Не удалось сохранить debug HTML: %s", e)
+
 
 def get_list_keys_and_templates():
 	original_list = st.get_all_from_table()
+	logger.debug("Шаблоны из БД: %d шт.", len(original_list))
 	# Оставляем только те шаблоны, которые нужны для запросов
 	filtered_list = [item for item in original_list if item[-1] is True]
 	# Оставляем только ключи и адреса шаблонов
 	keys_and_templates = [item[1:3] for item in filtered_list]
+	logger.info("Активные шаблоны: %d из %d", len(keys_and_templates), len(original_list))
+	for k, u in keys_and_templates:
+		logger.debug("  → key='%s', url='%s...'", k, u[:100])
 	return keys_and_templates
 
 
@@ -37,30 +76,47 @@ def get_black_list():
 	filtered_list = [item for item in original_list if item[-1] is True]
 	# Оставляем только адреса исключений
 	black_list = [item[2] for item in filtered_list]
+	logger.info("Чёрный список: %d активных из %d всего", len(black_list), len(original_list))
 	return black_list
 
 
 def get_visit_list():
 	visit_list = vl.get_col_by_name("url")
 	# Оставляем только адреса шаблонов
+	logger.debug("Список посещений: %d записей", len(visit_list))
 	return visit_list
 
 
 def get_number_vacancies(soup):
 	""" [<h1 class="magritte-text___gMq2l_7-0-3 magritte-text-overflow___UBrTV_7-0-3 magritte-text-typography-small___QbQNX_7-0-3 magritte-text-style-primary___8SAJp_7-0-3" data-qa="title"><span>Найдено 34 вакансии</span> «ИИ»</h1>] """
 	containers = soup.findAll("h1", {"data-qa": "title"})
+	logger.debug("h1[data-qa='title']: найдено %d элементов", len(containers))
+
 	if not containers:
+		# Диагностика: ищем любые h1 на странице
+		all_h1 = soup.findAll("h1")
+		logger.warning(
+			"⚠ h1[data-qa='title'] НЕ НАЙДЕН! Всего h1 на странице: %d", len(all_h1)
+		)
+		for i, h1 in enumerate(all_h1[:3]):
+			logger.warning(
+				"  h1[%d] class=%s text='%s'",
+				i, h1.get("class"), h1.get_text(strip=True)[:100],
+			)
 		return 0
-	
+
 	text_string = containers[0].get_text(strip=True)
-	# print(f"Текст для анализа: {text_string}")
-	
+	logger.debug("Текст заголовка: '%s'", text_string)
+
 	# Убираем ограничение в 9 символов и просто извлекаем все цифры
 	number_str = ''.join(filter(str.isdigit, text_string))
-	
+
 	if number_str:
-		return int(number_str)
+		result = int(number_str)
+		logger.info("Вакансий в выдаче: %d", result)
+		return result
 	else:
+		logger.warning("Не удалось извлечь число из '%s'", text_string)
 		return 0
 
 
@@ -72,41 +128,107 @@ def get_num_pages(num_vacancies):
 	# Но если дробное, то возвращаем количество + 1
 
 	if number_pages % 1 != 0:
-		return int(number_pages) + 1
+		result = int(number_pages) + 1
 	else:
-		return int(number_pages)
+		result = int(number_pages)
+	logger.debug("Страниц для обхода: %d (вакансий: %d)", result, num_vacancies)
+	return result
+
+
+def _normalize_vacancy_url(href):
+	"""Нормализует URL вакансии: отрезает query-параметры, добавляет схему если нужно."""
+	url = href.split("?")[0]
+	if url.startswith("//"):
+		url = "https:" + url
+	elif not url.startswith("http"):
+		# Относительная ссылка → дополняем до абсолютной
+		if not url.startswith("/"):
+			url = "/" + url
+		url = "https://rabota.by" + url
+	return url
 
 
 def get_all_vacancies_on_page(soup):
+	list_url_vacancy = []
+
+	# ===== Приоритет 1: magritte-селектор (2025+) =====
+	links = soup.findAll("a", {"data-qa": "serp-item__title"})
+
+	if links:
+		logger.debug("a[data-qa='serp-item__title']: %d ссылок", len(links))
+		for link in links:
+			href = link.get("href", "")
+			if "/vacancy/" in href:
+				url_vacancy = _normalize_vacancy_url(href)
+				list_url_vacancy.append(url_vacancy)
+			else:
+				logger.debug("Пропущена ссылка (нет /vacancy/): %s", href[:100])
+
+		logger.debug("URL вакансий на странице (magritte): %d", len(list_url_vacancy))
+		return list_url_vacancy
+
+	# ===== Приоритет 2: старый bloko-селектор (фоллбэк) =====
 	containers = soup.findAll(
 		"h2", class_="bloko-header-section-2", attrs={"data-qa": "bloko-header-2"}
 	)
-	list_url_vacancy = []
-	for container in containers:
-		link = container.find("a")
-		if link is not None:
-			href = link["href"]
-			# Обрезаем лишнее в адресе
-			url_vacancy = href.split("?")[0]
-			list_url_vacancy.append(url_vacancy)
+
+	if containers:
+		logger.info("Используется bloko-фоллбэк: %d контейнеров", len(containers))
+		for container in containers:
+			link = container.find("a")
+			if link is not None:
+				href = link["href"]
+				url_vacancy = _normalize_vacancy_url(href)
+				list_url_vacancy.append(url_vacancy)
+
+		logger.debug("URL вакансий на странице (bloko): %d", len(list_url_vacancy))
+		return list_url_vacancy
+
+	# ===== Оба селектора не сработали — диагностика =====
+	logger.warning("⚠ НИ ОДИН СЕЛЕКТОР НЕ НАШЁЛ ВАКАНСИЙ")
+	all_h2 = soup.findAll("h2")
+	logger.warning("  h2 на странице: %d", len(all_h2))
+	for i, h2 in enumerate(all_h2[:5]):
+		logger.warning(
+			"  h2[%d] class=%s data-qa=%s text='%s'",
+			i, h2.get("class"), h2.get("data-qa"), h2.get_text(strip=True)[:80],
+		)
+
+	all_links = soup.findAll("a", href=True)
+	vacancy_links = [a for a in all_links if "/vacancy/" in a.get("href", "")]
+	logger.warning("  Все ссылки с '/vacancy/' в href: %d шт.", len(vacancy_links))
+	for i, link in enumerate(vacancy_links[:5]):
+		logger.warning("    [%d] href='%s'", i, link["href"][:120])
+
 	return list_url_vacancy
 
 
 async def get_all_vacancies_on_all_pages(session, url, max_number_pages):
 	all_vacancies = []
+	logger.info("Обход %d страниц...", max_number_pages)
 	for num_page in range(max_number_pages):
 		url_full = url + items_on_page + pages + str(num_page)
 		try:
 			async with session.get(url_full, headers=headers) as response:
 				if response.status != 200:
-					print(f"Ошибка при получении {url_full}: Статус {response.status}")
+					logger.error("Страница %d: HTTP %d", num_page, response.status)
 					continue
 				page_text = await response.text()
+				logger.debug(
+					"Страница %d: HTTP %d, %d символов",
+					num_page, response.status, len(page_text),
+				)
 			soup = BeautifulSoup(page_text, "html.parser")
-			all_vacancies += get_all_vacancies_on_page(soup)
+			page_vacancies = get_all_vacancies_on_page(soup)
+			all_vacancies += page_vacancies
+			logger.debug(
+				"Страница %d: %d вакансий (итого: %d)",
+				num_page, len(page_vacancies), len(all_vacancies),
+			)
 		except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-			print(f"Сетевая ошибка при получении страницы {num_page} для {url}: {e}")
+			logger.error("Сетевая ошибка, страница %d для %s: %s", num_page, url[:80], e)
 			continue
+	logger.info("Всего URL со всех страниц: %d", len(all_vacancies))
 	return all_vacancies
 
 
@@ -131,6 +253,7 @@ def get_vacancy_name(soup):
     if vacancy_name is not None:
         text = vacancy_name.get_text(strip=True)
         if text:
+            logger.debug("vacancy-title: '%s'", text[:80])
             return text
 
     # Приоритет 2: Альтернативный атрибут data-qa="title"
@@ -138,37 +261,48 @@ def get_vacancy_name(soup):
     if vacancy_name is not None:
         text = vacancy_name.get_text(strip=True)
         if text:
+            logger.debug("title (fallback 1): '%s'", text[:80])
             return text
 
     # Приоритет 3: Поиск h1 с классами Magritte (новый дизайн hh/rabota)
     vacancy_name = soup.find("h1", class_=lambda x: x and "magritte" in x)
     if vacancy_name is not None:
-        return vacancy_name.get_text(strip=True)
+        text = vacancy_name.get_text(strip=True)
+        logger.debug("magritte h1 (fallback 2): '%s'", text[:80])
+        return text
 
     # Fallback: первый h1 на странице
     h1 = soup.find("h1")
     if h1 is not None:
-        return h1.get_text(strip=True)
+        text = h1.get_text(strip=True)
+        logger.debug("first h1 (fallback 3): '%s'", text[:80])
+        return text
 
+    logger.warning("Название вакансии НЕ НАЙДЕНО")
     return "?"
 
 
 def get_wage(soup):
 	wage = soup.find("div", {"data-qa": "vacancy-salary"})
 	# Если информация о ЗП не существует во всех вариантах, то выводим "?"
-	return wage.get_text() if wage else "?"
+	result = wage.get_text() if wage else "?"
+	logger.debug("ЗП: '%s'", result[:50])
+	return result
 
 
 def get_name_company(soup):
 	name_company = soup.find("a", {"data-qa": "vacancy-company-name"})
 	# Если имени компании не существует, то выводим "?"
-	return name_company.get_text() if name_company else "?"
+	result = name_company.get_text() if name_company else "?"
+	logger.debug("Компания: '%s'", result[:50])
+	return result
 
 
 def get_the_rest(soup, name_company):
 	full_address = soup.find("span", {"data-qa": "vacancy-view-raw-address"})
 	if full_address:
 		general_string = full_address.get_text()
+		logger.debug("Полный адрес: '%s'", general_string[:100])
 
 		# Извлекаем город
 		city = general_string.split(",")[0]
@@ -196,6 +330,7 @@ def get_the_rest(soup, name_company):
 			yandex_url = get_map_url("yandex", name_company)
 			google_url = get_map_url("google", name_company)
 	else:
+		logger.debug("Адрес не найден, используем имя компании для карт")
 		city, street_with_house, metro_stations = "?", "?", "?"
 		yandex_url = get_map_url("yandex", name_company)
 		google_url = get_map_url("google", name_company)
@@ -205,63 +340,127 @@ def get_the_rest(soup, name_company):
 
 # Работа со страницами вакансий
 async def get_param_for_msg():
+	logger.info("=" * 50)
+	logger.info("НАЧАЛО ЦИКЛА ПАРСИНГА")
+	logger.info("=" * 50)
+
 	keys_and_urls = get_list_keys_and_templates()
-	
+
+	if not keys_and_urls:
+		logger.warning("Нет активных шаблонов для парсинга!")
+		return
+
 	timeout = aiohttp.ClientTimeout(total=30)
 	async with aiohttp.ClientSession(timeout=timeout) as session:
 		for key, url in keys_and_urls:
+			logger.info("--- Шаблон: key='%s' ---", key)
+			logger.info("URL: %s", url[:150])
+
 			# Перед всеми проверками и запросами очищаем список посещений, если есть старые вакансии
 			# Например: Если дата посещённой ссылки больше заданного времени, то она оттуда удаляется
 			vl.delete_rows_after_time(key)
-			
+			logger.debug("Очистка старых посещений для key='%s' завершена", key)
+
 			page_text = None
 			try:
 				async with session.get(url, headers=headers) as response:
+					logger.info(
+						"Главная: HTTP %d, Content-Type=%s",
+						response.status,
+						response.headers.get("Content-Type", "?"),
+					)
 					if response.status != 200:
-						print(f"Ошибка при получении {url}: Статус {response.status}")
+						logger.error("HTTP %d для %s", response.status, url[:80])
 						continue
 					page_text = await response.text()
+					logger.info("Получено %d символов HTML", len(page_text))
 			except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-				print(f"Сетевая ошибка при получении {url}: {e}")
+				logger.error("Сетевая ошибка при получении %s: %s", url[:80], e)
 				continue
 
 			if not page_text:
+				logger.warning("Пустой ответ для %s, пропускаем", url[:80])
 				continue
 
+			# Проверяем на антибот/капчу — подозрительно короткий ответ
+			if len(page_text) < 5000:
+				logger.warning(
+					"⚠ Подозрительно короткий ответ: %d символов. Возможна капча/блокировка!",
+					len(page_text),
+				)
+				_save_debug_html(page_text, f"short_{key}")
+
 			soup = BeautifulSoup(page_text, "html.parser")
+
+			# Title страницы для диагностики
+			title_tag = soup.find("title")
+			page_title = title_tag.get_text(strip=True) if title_tag else "NO TITLE"
+			logger.info("Title: '%s'", page_title[:120])
 
 			# Получаем количество найденных вакансий
 			number_results = get_number_vacancies(soup)
 			# Считаем, сколько будет страниц
 			max_number_pages = get_num_pages(number_results)
 
+			if number_results == 0:
+				logger.warning(
+					"⚠ 0 вакансий для key='%s'. Сохраняем HTML для анализа.", key
+				)
+				_save_debug_html(page_text, f"zero_{key}")
+				continue
+
 			# Получаем все URLs из выдачи rabota.by
 			all_urls = await get_all_vacancies_on_all_pages(session, url, max_number_pages)
+			logger.info("URL из выдачи: %d", len(all_urls))
+
+			# Критичная проверка: вакансии есть, но URL не извлечены
+			if not all_urls and number_results > 0:
+				logger.error(
+					"❌ КРИТИЧНО: вакансий %d, но URL не извлечены! "
+					"Сохраняем HTML.",
+					number_results,
+				)
+				_save_debug_html(page_text, f"no_urls_{key}")
 
 			# Получаем все URLs из чёрного списка
 			black_list = get_black_list()
 
 			# Удаляем из выдачи те URLs, которые находятся в чёрном списке
+			before = len(all_urls)
 			all_urls = list(set(all_urls) - set(black_list))
+			logger.info(
+				"Фильтр чёрного списка: %d → %d (убрано %d)",
+				before, len(all_urls), before - len(all_urls),
+			)
 
 			# Получаем список уже ранее выведенных вакансий (список посещений)
 			visit_list = get_visit_list()
 			# Получаем список URLs, которые ранее не выводились в боте,
 			# то есть удаляем из выдачи URLs из списка посещений
+			before = len(all_urls)
 			all_urls = list(set(all_urls) - set(visit_list))
+			logger.info(
+				"Фильтр посещений: %d → %d (убрано %d)",
+				before, len(all_urls), before - len(all_urls),
+			)
 
 			if all_urls:
+				logger.info("✅ Новых вакансий для обработки: %d", len(all_urls))
+
 				# После того как прошли все проверки, записываем оставшиеся URLs (новые) в список посещений
 				for url_vacancy in all_urls:
 					vl.create_new_row(key, url_vacancy)
+				logger.debug("Записано %d URL в список посещений", len(all_urls))
 
 				# Заходим на каждый URL и достаём оттуда информацию о вакансии
 				# Название вакансии, ЗП, название фирмы, адрес и прочее
 				for url_vacancy in all_urls:
+					logger.debug("Загрузка вакансии: %s", url_vacancy[:100])
 					try:
 						async with session.get(url_vacancy, headers=headers) as response:
+							logger.debug("Вакансия: HTTP %d — %s", response.status, url_vacancy[:60])
 							if response.status != 200:
-								print(f"Ошибка при получении вакансии {url_vacancy}: Статус {response.status}")
+								logger.error("Ошибка при получении вакансии %s: HTTP %d", url_vacancy[:80], response.status)
 								continue
 							page_text2 = await response.text()
 						soup2 = BeautifulSoup(page_text2, "html.parser")
@@ -298,7 +497,22 @@ async def get_param_for_msg():
 							"google_url": google_url,
 						}
 
+						logger.info(
+							"→ Вакансия готова: '%s' @ '%s' | ЗП: %s",
+							vacancy_name[:50],
+							name_company[:30],
+							wage[:30],
+						)
 						yield param
 					except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-						print(f"Сетевая ошибка при получении вакансии {url_vacancy}: {e}")
+						logger.error("Сетевая ошибка при получении вакансии %s: %s", url_vacancy[:80], e)
 						continue
+					except Exception as e:
+						logger.exception("Непредвиденная ошибка при обработке вакансии %s", url_vacancy[:80])
+						continue
+			else:
+				logger.info("Нет новых вакансий для key='%s'", key)
+
+	logger.info("=" * 50)
+	logger.info("КОНЕЦ ЦИКЛА ПАРСИНГА")
+	logger.info("=" * 50)
