@@ -1,9 +1,10 @@
 import asyncio
 import logging
+import os
 import time
 
 import aiohttp
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Comment
 
 from data import BlackList, SearchTemplates, VisitsList
 
@@ -25,15 +26,34 @@ headers = {
 	"user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
 }
 
+DEBUG_HTML_DIR = "debug_html"
+
 
 def _save_debug_html(html_content, label):
-	"""Сохраняет HTML в файл для отладки селекторов."""
-	filename = f"debug_{label}_{int(time.time())}.html"
+	"""Сохраняет облегчённый HTML для отладки.
+
+	Фиксированное имя файла на каждый label → перезаписывается, не копится.
+	Убираем script/style/svg/noscript/комментарии (экономия ~80-85% размера).
+	"""
+	os.makedirs(DEBUG_HTML_DIR, exist_ok=True)
+	# Фиксированное имя → макс. 1 файл на label
+	filename = os.path.join(DEBUG_HTML_DIR, f"debug_{label}.html")
+
 	try:
+		soup = BeautifulSoup(html_content, "html.parser")
+		for tag in soup.find_all(["script", "style", "svg", "noscript", "link"]):
+			tag.decompose()
+		for comment in soup.find_all(string=lambda text: isinstance(text, Comment)):
+			comment.extract()
+		stripped = str(soup)
+
 		with open(filename, "w", encoding="utf-8") as f:
-			f.write(html_content)
-		logger.info("Debug HTML сохранён: %s (%d байт)", filename, len(html_content))
-	except IOError as e:
+			f.write(stripped)
+		logger.info(
+			"Debug HTML сохранён: %s (%d КБ, было %d КБ)",
+			filename, len(stripped) // 1024, len(html_content) // 1024,
+		)
+	except Exception as e:
 		logger.error("Не удалось сохранить debug HTML: %s", e)
 
 
@@ -115,63 +135,71 @@ def get_num_pages(num_vacancies):
 	return result
 
 
+def _normalize_vacancy_url(href):
+	"""Нормализует URL вакансии: отрезает query-параметры, добавляет схему если нужно."""
+	url = href.split("?")[0]
+	if url.startswith("//"):
+		url = "https:" + url
+	elif not url.startswith("http"):
+		# Относительная ссылка → дополняем до абсолютной
+		if not url.startswith("/"):
+			url = "/" + url
+		url = "https://rabota.by" + url
+	return url
+
+
 def get_all_vacancies_on_page(soup):
+	list_url_vacancy = []
+
+	# ===== Приоритет 1: magritte-селектор (2025+) =====
+	links = soup.findAll("a", {"data-qa": "serp-item__title"})
+
+	if links:
+		logger.debug("a[data-qa='serp-item__title']: %d ссылок", len(links))
+		for link in links:
+			href = link.get("href", "")
+			if "/vacancy/" in href:
+				url_vacancy = _normalize_vacancy_url(href)
+				list_url_vacancy.append(url_vacancy)
+			else:
+				logger.debug("Пропущена ссылка (нет /vacancy/): %s", href[:100])
+
+		logger.debug("URL вакансий на странице (magritte): %d", len(list_url_vacancy))
+		return list_url_vacancy
+
+	# ===== Приоритет 2: старый bloko-селектор (фоллбэк) =====
 	containers = soup.findAll(
 		"h2", class_="bloko-header-section-2", attrs={"data-qa": "bloko-header-2"}
 	)
-	logger.debug(
-		"h2.bloko-header-section-2[data-qa='bloko-header-2']: %d", len(containers)
-	)
 
-	if not containers:
-		# === ДИАГНОСТИКА: проверяем альтернативные селекторы ===
-		all_h2 = soup.findAll("h2")
-		logger.warning(
-			"⚠ BLOKO-СЕЛЕКТОР НЕ НАШЁЛ НИЧЕГО. h2 на странице: %d", len(all_h2)
-		)
-		for i, h2 in enumerate(all_h2[:5]):
-			logger.warning(
-				"  h2[%d] class=%s data-qa=%s text='%s'",
-				i, h2.get("class"), h2.get("data-qa"), h2.get_text(strip=True)[:80],
-			)
+	if containers:
+		logger.info("Используется bloko-фоллбэк: %d контейнеров", len(containers))
+		for container in containers:
+			link = container.find("a")
+			if link is not None:
+				href = link["href"]
+				url_vacancy = _normalize_vacancy_url(href)
+				list_url_vacancy.append(url_vacancy)
 
-		# Magritte-ссылки (новый дизайн hh/rabota)
-		serp_links = soup.findAll("a", {"data-qa": "serp-item__title"})
-		logger.warning(
-			"  Альтернатива a[data-qa='serp-item__title']: %d шт.", len(serp_links)
-		)
-		for i, link in enumerate(serp_links[:3]):
-			logger.warning(
-				"    [%d] href='%s' text='%s'",
-				i, link.get("href", "?")[:100], link.get_text(strip=True)[:60],
-			)
+		logger.debug("URL вакансий на странице (bloko): %d", len(list_url_vacancy))
+		return list_url_vacancy
 
-		# vacancy-serp контейнеры
-		serp_items = soup.findAll("div", {"data-qa": "vacancy-serp__vacancy"})
+	# ===== Оба селектора не сработали — диагностика =====
+	logger.warning("⚠ НИ ОДИН СЕЛЕКТОР НЕ НАШЁЛ ВАКАНСИЙ")
+	all_h2 = soup.findAll("h2")
+	logger.warning("  h2 на странице: %d", len(all_h2))
+	for i, h2 in enumerate(all_h2[:5]):
 		logger.warning(
-			"  Альтернатива div[data-qa='vacancy-serp__vacancy']: %d шт.",
-			len(serp_items),
+			"  h2[%d] class=%s data-qa=%s text='%s'",
+			i, h2.get("class"), h2.get("data-qa"), h2.get_text(strip=True)[:80],
 		)
 
-		# Любые ссылки на /vacancy/
-		all_links = soup.findAll("a", href=True)
-		vacancy_links = [a for a in all_links if "/vacancy/" in a.get("href", "")]
-		logger.warning(
-			"  Все ссылки с '/vacancy/' в href: %d шт.", len(vacancy_links)
-		)
-		for i, link in enumerate(vacancy_links[:5]):
-			logger.warning("    [%d] href='%s'", i, link["href"][:120])
+	all_links = soup.findAll("a", href=True)
+	vacancy_links = [a for a in all_links if "/vacancy/" in a.get("href", "")]
+	logger.warning("  Все ссылки с '/vacancy/' в href: %d шт.", len(vacancy_links))
+	for i, link in enumerate(vacancy_links[:5]):
+		logger.warning("    [%d] href='%s'", i, link["href"][:120])
 
-	list_url_vacancy = []
-	for container in containers:
-		link = container.find("a")
-		if link is not None:
-			href = link["href"]
-			# Обрезаем лишнее в адресе
-			url_vacancy = href.split("?")[0]
-			list_url_vacancy.append(url_vacancy)
-
-	logger.debug("URL вакансий на странице (bloko): %d", len(list_url_vacancy))
 	return list_url_vacancy
 
 
@@ -389,7 +417,6 @@ async def get_param_for_msg():
 			if not all_urls and number_results > 0:
 				logger.error(
 					"❌ КРИТИЧНО: вакансий %d, но URL не извлечены! "
-					"Вероятно, селектор h2.bloko-header-section-2 устарел. "
 					"Сохраняем HTML.",
 					number_results,
 				)
